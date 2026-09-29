@@ -1,13 +1,10 @@
 const applicationId =
     process.env.DISCORD_APPLICATION_ID;
 
-const guildId =
-    process.env.TEST_GUILD_ID;
-
 const token =
     process.env.DISCORD_TOKEN;
 
-if (!applicationId || !guildId || !token)
+if (!applicationId || !token)
 {
     throw new Error(
         "Missing Discord registration credentials."
@@ -19,6 +16,16 @@ const command =
     name: "frontlines",
     description: "FFXIV Frontline rotation",
     type: 1,
+
+    integration_types:
+    [
+        0
+    ],
+
+    contexts:
+    [
+        0
+    ],
 
     options:
     [
@@ -45,7 +52,7 @@ const command =
 
 const url =
     `https://discord.com/api/v10/applications/` +
-    `${applicationId}/guilds/${guildId}/commands`;
+    `${applicationId}/commands`;
 
 const response =
     await fetch(

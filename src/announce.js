@@ -62,7 +62,7 @@ async function getSubscriptions()
                 body: JSON.stringify(
                 {
                     sql:
-                        "SELECT guild_id, channel_id " +
+                        "SELECT guild_id, channel_id, message_id " +
                         "FROM subscriptions;"
                 })
             }
@@ -170,6 +170,114 @@ async function sendDiscordMessage(
             `Discord returned ${response.status}: ${error}`
         );
     }
+
+    return await response.json();
+}
+
+async function deleteDiscordMessage(
+    channelId,
+    messageId
+)
+{
+    if (!messageId)
+    {
+        return;
+    }
+
+    const url =
+        `https://discord.com/api/v10/channels/` +
+        `${channelId}/messages/${messageId}`;
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "DELETE",
+
+                headers:
+                {
+                    "Authorization":
+                        `Bot ${DISCORD_TOKEN}`
+                }
+            }
+        );
+
+    if (
+        response.status === 404
+    )
+    {
+        console.log(
+            `Previous message ${messageId} ` +
+            `was already deleted.`
+        );
+
+        return;
+    }
+
+    if (!response.ok)
+    {
+        const error =
+            await response.text();
+
+        throw new Error(
+            `Failed to delete previous message: ` +
+            `${response.status} ${error}`
+        );
+    }
+}
+
+async function updateMessageId(
+    guildId,
+    messageId
+)
+{
+    const url =
+        `https://api.cloudflare.com/client/v4/accounts/` +
+        `${CLOUDFLARE_ACCOUNT_ID}/d1/database/` +
+        `${D1_DATABASE_ID}/query`;
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "POST",
+
+                headers:
+                {
+                    "Authorization":
+                        `Bearer ${CLOUDFLARE_API_TOKEN}`,
+
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify(
+                {
+                    sql:
+                        "UPDATE subscriptions " +
+                        "SET message_id = ?, updated_at = ? " +
+                        "WHERE guild_id = ?;",
+
+                    params:
+                    [
+                        messageId,
+                        String(Date.now()),
+                        guildId
+                    ]
+                })
+            }
+        );
+
+    const body =
+        await response.json();
+
+    if (!response.ok || !body.success)
+    {
+        throw new Error(
+            `Failed to update D1: ` +
+            `${JSON.stringify(body.errors)}`
+        );
+    }
 }
 
 async function main()
@@ -203,10 +311,35 @@ async function main()
     {
         try
         {
-            await sendDiscordMessage(
-                subscription.channel_id,
-                message
+            const newMessage =
+                await sendDiscordMessage(
+                    subscription.channel_id,
+                    message
+                );
+
+            await updateMessageId(
+                subscription.guild_id,
+                newMessage.id
             );
+
+            if (subscription.message_id)
+            {
+                try
+                {
+                    await deleteDiscordMessage(
+                        subscription.channel_id,
+                        subscription.message_id
+                    );
+                }
+                catch (error)
+                {
+                    console.warn(
+                        `Could not remove previous message ` +
+                        `${subscription.message_id}:`,
+                        error
+                    );
+                }
+            }
 
             successes++;
 
